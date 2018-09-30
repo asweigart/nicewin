@@ -60,13 +60,58 @@ WPF_ASYNCWINDOWPLACEMENT = 0x0004
 WPF_RESTORETOMAXIMIZED = 0x0002
 WPF_SETMINPOSITION = 0x0001
 
+# These LSFW_ constants are used for LockSetForegroundWindow() and are
+# documented at https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-locksetforegroundwindow
+LSFW_LOCK = 1
+LSFW_UNLOCK = 2
 
+# These MB_ constants are used for MessageBox() and are documented at
+# https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-messagebox#parameters
+# Buttons in the dialog box:
+MB_ABORTRETRYIGNORE = 0x00000002
+MB_CANCELTRYCONTINUE = 0x00000006
+MB_HELP = 0x00004000
+MB_OK = 0x00000000
+MB_OKCANCEL = 0x00000001
+MB_RETRYCANCEL = 0x00000005
+MB_YESNO = 0x00000004
+MB_YESNOCANCEL = 0x00000003
 
+# Icon to display:
+MB_ICONEXCLAMATION =  MB_ICONWARNING = 0x00000030
+MB_ICONINFORMATION = MB_ICONASTERISK = 0x00000040
+MB_ICONQUESTION = 0x00000020
+MB_ICONSTOP = MB_ICONERROR = MB_ICONHAND = 0x00000010
 
+# Which button is default:
+MB_DEFBUTTON1 = 0x00000000
+MB_DEFBUTTON2 = 0x00000100
+MB_DEFBUTTON3 = 0x00000200
+MB_DEFBUTTON4 = 0x00000300
 
+# Modality of the dialog box:
+MB_APPLMODAL = 0x00000000
+MB_SYSTEMMODAL = 0x00001000
+MB_TASKMODAL = 0x00002000
 
+# Other options:
+MB_DEFAULT_DESKTOP_ONLY = 0x00020000
+MB_RIGHT = 0x00080000
+MB_RTLREADING = 0x00100000
+MB_SETFOREGROUND = 0x00010000
+MB_TOPMOST = 0x00040000
+MB_SERVICE_NOTIFICATION = 0x00200000
 
-
+# Response integers for each button type:
+IDABORT = 3
+IDCANCEL = 2
+IDCONTINUE = 11
+IDIGNORE = 5
+IDNO = 7
+IDOK = 1
+IDRETRY = 4
+IDTRYAGAIN = 10
+IDYES = 6
 
 
 

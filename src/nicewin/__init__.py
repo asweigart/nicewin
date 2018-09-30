@@ -43,12 +43,33 @@ Some things to note first about the Windows API:
   module will use the W functions over the A functions.
 * TODO - note about dealing with strings and allocating/freeing memory
   for them.
+
+
+Note for developers and contributors:
+
+The primary reason for this module is to ease Python programmers into the
+win32 api. As such, if you'd like to contribute, please make note of the
+following:
+
+* The main functions should reflect the win32 function names, even if it
+  doesn't quite make sense. For example, the LockSetForegroundWindow()
+  function can both lock and unlock the ability to set the window to the
+  foreground, but nevertheless we'll name the function
+  lock_set_foreground_window() in NiceWin.
+* However, the arguments and return values can be Pythonic and don't have to
+  match the win32 API exactly.
+* Documentation is important! Follow the docstring format used by
+  functions in this module; include links to the Microsoft documentation
+  or Stack Overflow links that explain concepts. Assume the users have
+  no knowledge of Windows internals concepts.
+* In general, we use the W functions, not the A functions. For example,
+  message_box() calls MessageBoxW(), not MessageBoxA() or MessageBox().
 """
 
 import ctypes
 from ctypes import wintypes # We can't use ctypes.wintypes, we must import wintypes this way.
 
-from constants import NULL, SW_FORCEMINIMIZE, SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_IGNORE_INSERTS,  AW_ACTIVATE, AW_HIDE
+from constants import NULL, SW_FORCEMINIMIZE, SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_IGNORE_INSERTS,  AW_ACTIVATE, AW_HIDE, LSFW_LOCK, LSFW_UNLOCK, MB_OKCANCEL, IDABORT, IDCANCEL, IDCONTINUE, IDIGNORE, IDNO, IDOK, IDRETRY, IDTRYAGAIN, IDYES
 from structs import POINT, RECT, WINDOWPLACEMENT
 
 
@@ -70,6 +91,9 @@ class Window:
     """A class that represents a Window, to provide a richer representation
     than just a `hWnd` "window handle".
 
+    Window handles are recycled, so the particular hWnd value could later be
+    used for a different window.
+
     TODO
     """
     def __init__(self, hWnd):
@@ -85,28 +109,62 @@ class Window:
 
 
     @property
-    def window_text(self):
-        """A read-only property for the title or caption in the top bar of
-        the window."""
+    def title(self):
+        """The string of the title or caption in the top bar of the window."""
         return get_window_text(self)
 
-    @window_text.setter
-    def window_text(self, value):
+    @title.setter
+    def title(self, value):
         set_window_text(self, str(value))
 
+
     @property
-    def is_visible(self):
-        """Returns `True` if the window is visible, otherwise returns `False`.
-        This property can be set to a bool, in which case the `hide()` or
-        `show()` method is called. TODO - what counts as visible."""
+    def visible(self):
+        """A bool for of the window is visible (shown) or not (hidden)."""
         return is_window_visible(self)
 
-    @is_visible.setter
-    def is_visible(self, value):
+    @visible.setter
+    def visible(self, value):
         if value:
             self.show()
         else:
             self.hide()
+
+
+    @property
+    def maximized(self):
+        """A bool for if the window is maximized or not."""
+        return is_zoomed(self)
+
+    @maximized.setter
+    def maximized(self, value):
+        if value:
+            self.maximize()
+        else:
+            if is_zoomed(self):
+                # Already maximized, so restore the window.
+                self.restore()
+            else:
+                # Not maximized, so do nothing.
+                pass
+
+
+    @property
+    def minimized(self):
+        """A bool for if the window is minimized or not."""
+        return is_iconic(self)
+
+    @minimized.setter
+    def minimized(self, value):
+        if value:
+            self.minimize()
+        else:
+            if is_iconic(self):
+                # Already minimized, so restore the window.
+                open_icon(self)
+            else:
+                # Not minimized, so do nothing.
+                pass
 
 
     # ShowWindow() methods:
@@ -177,7 +235,7 @@ class Window:
 
 
 
-def animate_window(windowObj, milliseconds, animationType):
+def animate_window(window_obj, milliseconds, animationType):
     """A nice wrapper for AnimateWindow(). Allows you to animate a window while
     showing or hiding it. There are four types of animation: roll, slide,
     collapse or expand, and alpha-blended fade.
@@ -195,11 +253,11 @@ def animate_window(windowObj, milliseconds, animationType):
     if (animationType & AW_ACTIVATE != 0) and (animationType & AW_HIDE != 0):
         raise NiceWinException('animationType can\'t be both AW_ACTIVATE and AW_HIDE')
 
-    ctypes.windll.user32.AnimateWindow(windowObj.hWnd, milliseconds, animationType)
+    ctypes.windll.user32.AnimateWindow(window_obj.hWnd, milliseconds, animationType)
 
 
 
-def bring_window_to_top(windowObj):
+def bring_window_to_top(window_obj):
     """A nice wrapper for BringWindowToTop(). Brings the window to the top of
     the z-order, on top of all other windows.
 
@@ -211,12 +269,52 @@ def bring_window_to_top(windowObj):
     Microsoft Documentation:
     https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-bringwindowtotop
     """
-    result = ctypes.windll.user32.BringWindowToTop(windowObj.hWnd)
+    result = ctypes.windll.user32.BringWindowToTop(window_obj.hWnd)
     if result == 0:
         _raiseWithLastError()
 
 
-def close_window(windowObj):
+def clip_cursor(left=None, top=None, right=None, bottom=None):
+    """A nice wrapper for ClipCursor(). Restricts the mouse cursor to the are
+    on the screen dictated by `left`, `top`, `right`, and `bottom`.
+
+    If no arguments are passed, the cursor is free to move anywhere.
+
+    Syntax:
+    BOOL ClipCursor(
+      const RECT *lpRect
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-clipcursor
+
+    An example of confining a cursor:
+    https://docs.microsoft.com/en-us/windows/desktop/menurc/using-cursors#confining-a-cursor
+    """
+    if (left is None) or (top is None) or (right is None) or (bottom is None):
+        if (left is None) and (top is None) and (right is None) and (bottom is None):
+            # Call ClipCursor() and pass NULL.
+            result = ctypes.windll.user32.ClipCursor(NULL)
+        else:
+            # One of the parameters is None, but not all of them.
+            raise NiceWinException('either all args must be None or none of the args can be None')
+    else:
+        # All of the args have been specified.
+        rect = RECT()
+        rect.left = left
+        rect.top = top
+        rect.right = right
+        rect.bottom = bottom
+        result = ctypes.windll.user32.ClipCursor(rect) # TODO i dont' think I'm passing this correctly.
+
+    if result != 0:
+        return True
+    else:
+        _raiseWithLastError()
+
+
+
+def close_window(window_obj):
     """A nice wrapper for CloseWindow(). Activates (puts in focus) the window
     and minimizes it, if it is not already minimized. This function is poorly
     named: it doesn't "destroy" the window.
@@ -230,12 +328,12 @@ def close_window(windowObj):
     Microsoft Documentation:
     https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-closewindow
     """
-    result = ctypes.windll.user32.CloseWindow(windowObj.hWnd)
+    result = ctypes.windll.user32.CloseWindow(window_obj.hWnd)
     if result == 0:
         _raiseWithLastError()
 
 
-def destroy_window(windowObj):
+def destroy_window(window_obj):
     """A nice wrapper for DestroyWindow().
 
     Syntax:
@@ -244,7 +342,7 @@ def destroy_window(windowObj):
     Microsoft Documentation:
     https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-destroywindow
     """
-    result = ctypes.windll.user32.DestroyWindow(windowObj.hWnd)
+    result = ctypes.windll.user32.DestroyWindow(window_obj.hWnd)
     if result == NULL:
         _raiseWithLastError()
 
@@ -327,7 +425,7 @@ def get_active_window():
         return hWnd
 
 
-def get_client_rect(windowObj):
+def get_client_rect(window_obj):
     """A nice wrapper for GetClientRect(). TODO
 
     Syntax:
@@ -343,11 +441,55 @@ def get_client_rect(windowObj):
     https://msdn.microsoft.com/en-us/library/windows/desktop/dd162897(v=vs.85).aspx
     """
     rect = RECT()
-    result = ctypes.windll.user32.GetClientRect(windowObj.hWnd, ctypes.byref(rect))
+    result = ctypes.windll.user32.GetClientRect(window_obj.hWnd, ctypes.byref(rect))
     if result == 0:
         _raiseWithLastError()
     else:
         return (rect.left, rect.top, rect.right, rect.bottom)
+
+
+def get_cursor_pos():
+    """A nice wrapper for GetCursorPos(). This returns an (x, y) tuple of the
+    mouse cursor's position, in screen coordinates.
+
+    Syntax:
+    BOOL GetCursorPos(
+      LPPOINT lpPoint
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getcursorpos
+    """
+
+    cursor = POINT()
+    ctypes.windll.user32.GetCursorPos(ctypes.byref(cursor))
+    return (cursor.x, cursor.y)
+
+
+def get_cursor():
+    """A nice wrapper for GetCursor(). TODO
+
+    Syntax:
+    HCURSOR GetCursor();
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getcursor
+    """
+    pass # TODO
+
+
+def get_cursor_info():
+    """A nice wrapper for GetCursorInfo(). TODO
+
+    Syntax:
+    BOOL GetCursorInfo(
+      PCURSORINFO pci
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getcursorinfo
+    """
+    pass # TODO
 
 
 def get_desktop_window():
@@ -384,7 +526,6 @@ def get_foreground_window():
         return Window(hWnd)
 
 
-
 def get_last_error():
     """A nice wrapper for GetLastError(). When Windows API function call fail,
     they usually only indicate that an error happened, not what the actual
@@ -400,7 +541,7 @@ def get_last_error():
     return ctypes.windll.kernel32.GetLastError()
 
 
-def get_window(windowObj, relationship):
+def get_window(window_obj, relationship):
     """A nice wrapper for GetWindow(). TODO
 
     Syntax:
@@ -412,14 +553,14 @@ def get_window(windowObj, relationship):
     Microsoft Documentation:
     https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getwindow
     """
-    hWnd = ctypes.windll.user32.GetWindow(windowObj.hWnd, relationship)
+    hWnd = ctypes.windll.user32.GetWindow(window_obj.hWnd, relationship)
     if hWnd == NULL:
         _raiseWithLastError()
     else:
         return Window(hWnd)
 
 
-def get_window_placement(windowObj):
+def get_window_placement(window_obj):
     """A nice wrapper for GetWindowPlacement(). TODO
 
     Syntax:
@@ -435,14 +576,14 @@ def get_window_placement(windowObj):
     https://docs.microsoft.com/en-us/windows/desktop/api/winuser/ns-winuser-tagwindowplacement
     """
     windowPlacement = WINDOWPLACEMENT
-    result = ctypes.windll.user32.GetWindowPlacement(windowObj.hWnd, ctypes.byref(windowPlacement))
+    result = ctypes.windll.user32.GetWindowPlacement(window_obj.hWnd, ctypes.byref(windowPlacement))
     if result == 0:
         _raiseWithLastError()
     else:
         return windowPlacement # TODO - finish this
 
 
-def get_window_rect(windowObj):
+def get_window_rect(window_obj):
     """A nice wrapper for GetWindowRect(). TODO
 
     Syntax:
@@ -455,14 +596,14 @@ def get_window_rect(windowObj):
     https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getwindowrect
     """
     rect = RECT()
-    result = ctypes.windll.user32.GetWindowRect(windowObj.hWnd, ctypes.byref(rect))
+    result = ctypes.windll.user32.GetWindowRect(window_obj.hWnd, ctypes.byref(rect))
     if result != 0:
         return (rect.left, rect.top, rect.right, rect.bottom)
     else:
         _raiseWithLastError()
 
 
-def get_window_text(windowObj):
+def get_window_text(window_obj):
     """A nice wrapper for GetWindowTextW(). TODO
 
     Syntax:
@@ -480,15 +621,134 @@ def get_window_text(windowObj):
     https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getwindowtextw
     https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getwindowtextlengthw
     """
-    textLenInCharacters = ctypes.windll.user32.GetWindowTextLengthW(windowObj.hWnd)
+    textLenInCharacters = ctypes.windll.user32.GetWindowTextLengthW(window_obj.hWnd)
     stringBuffer = ctypes.create_unicode_buffer(textLenInCharacters + 1) # +1 for the \0 at the end of the null-terminated string.
-    ctypes.windll.user32.GetWindowTextW(windowObj.hWnd, stringBuffer, textLenInCharacters + 1)
+    ctypes.windll.user32.GetWindowTextW(window_obj.hWnd, stringBuffer, textLenInCharacters + 1)
 
     # TODO it's ambiguous if an error happened or the title text is just empty. Look into this later.
     return stringBuffer.value
 
 
-def is_window_visible(windowObj):
+def get_window_thread_process_id(window_obj):
+    """A nice wrapper for GetWindowThreadProcessId(). Returns a tuple of the
+    thread id (tid) of the thread that created the specified window, and the
+    process id that created the window.
+
+    Syntax:
+    DWORD GetWindowThreadProcessId(
+      HWND    hWnd,
+      LPDWORD lpdwProcessId
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getwindowthreadprocessid
+    """
+    pid = wintypes.DWORD()
+    tid = ctypes.windll.user32.GetWindowThreadProcessId(window_obj.hWnd, ctypes.byref(pid))
+    return tid, pid.value
+
+
+def is_child(parent_window_obj, child_window_obj):
+    """A nice wrapper for IsChild(). Returns `True` if `child_window_obj` is a
+    child window of `parent_window_obj`.
+
+    Syntax:
+    BOOL IsChild(
+      HWND hWndParent,
+      HWND hWnd
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-ischild
+    """
+    return ctypes.windll.user32.IsChild(parent_window_obj.hWnd, child_window_obj.hWnd) != 0
+
+
+def is_gui_thread(convert_to_gui=False):
+    """A nice wrapper for IsGuiThread(). If `convert_to_gui` is `True`, then
+    the thread will be converted to one.
+
+    TODO - write more about gui threads
+
+    Syntax:
+    BOOL IsGUIThread(
+      BOOL bConvert
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-isguithread
+
+    TODO - handle ERROR_NOT_ENOUGH_MEMORY case
+    """
+    return ctypes.windll.user32.IsGuiThread(convert_to_gui) != 0
+
+
+def is_iconic(window_obj):
+    """A nice wrapper for IsIconic(). Returns `True` if `window_obj` is
+    "iconic", that is, minimized.
+
+    Syntax:
+    BOOL IsIconic(
+      HWND hWnd
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-isiconic
+    """
+    return ctypes.windll.user32.IsIconic(window_obj.hWnd) != 0
+
+
+def is_process_dpi_aware():
+    """A nice wrapper for IsProcessDPIAware(). TODO
+
+    Syntax:
+    BOOL IsProcessDPIAware();
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-isprocessdpiaware
+    """
+    return bool(ctypes.windll.user32.IsProcessDPIAware());
+
+
+def is_window(window_obj):
+    """A nice wrapper for IsWindow(). Returns `True` if `window_obj` identifies
+    an existing window.
+
+    A thread shouldn't call is_window() on a window that it didn't create
+    because it could later be destroyed, making the return value out of date.
+
+    Window handles are recycled, so the particular hWnd value could later be
+    used for a different window.
+
+    Syntax:
+    BOOL IsWindow(
+      HWND hWnd
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-iswindow
+    """
+    return ctypes.windll.user32.IsWindow(window_obj.hWnd) != 0
+
+
+def is_window_unicode(window_obj):
+    """A nice wrapper for IsWindowUnicode(). Returns `True` if the specified
+    window is a native Unicode window. The character set of a window is
+    determined by the window class that was registered (through
+    RegisterClass()).
+
+    Syntax:
+    BOOL IsWindowUnicode(
+      HWND hWnd
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-iswindowunicode
+    """
+    return ctypes.windll.user32.IsWindowUnicode(window_obj.hWnd) != 0
+
+
+def is_window_visible(window_obj):
     """A nice wrapper for IsWindowVisible(). TODO
 
     Syntax:
@@ -502,7 +762,165 @@ def is_window_visible(windowObj):
     WS_VISIBLE discussed in:
     https://docs.microsoft.com/en-us/windows/desktop/winmsg/window-styles
     """
-    return ctypes.windll.user32.IsWindowVisible(windowObj.hWnd) != 0
+    return ctypes.windll.user32.IsWindowVisible(window_obj.hWnd) != 0
+
+
+def is_zoomed(window_obj):
+    """A nice wrapper for IsZoomed(). Returns `True` if the specified window
+    is "zoomed", that is, maximized.
+
+    Syntax:
+    BOOL IsZoomed(
+      HWND hWnd
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-iszoomed
+    """
+    return ctypes.windll.user32.IsZoomed(window_obj.hWnd) != 0
+
+
+def lock_set_foreground_window(lock=True):
+    """A nice wrapper for LockSetForegroundWindow(). By passing `LSFW_LOCK` for
+    `lock`, you can disable calls to the SetForegroundWindow() function.
+
+    Syntax:
+    BOOL LockSetForegroundWindow(
+      UINT uLockCode
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-locksetforegroundwindow
+    """
+    result = ctypes.windll.user32.LocSetForegroundWindow(LSFW_LOCK if lock else LSFW_UNLOCK)
+    if result == 0:
+        _raiseWithLastError()
+    else:
+        return True
+
+
+def logical_to_physical_point(window_obj, logical_x, logical_y):
+    """A nice wrapper for LogicalToPhysicalPoint(). A tuple of (x, y) physical
+    point coordinates is returned matching the logical point in `window_obj`.
+
+    TODO - I don't think this function works. It keeps returning 0, 0.
+
+    Syntax:
+    BOOL LogicalToPhysicalPoint(
+      HWND    hWnd,
+      LPPOINT lpPoint
+    );
+
+    "Currently MessageBoxEx and MessageBox work the same way."
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-logicaltophysicalpoint
+    """
+    physicalPoint = POINT()
+    ctypes.windll.user32.LogicalToPhysicalPoint(window_obj.hWnd,
+                                                ctypes.byref(physicalPoint))
+    return (physicalPoint.x, physicalPoint.y)
+
+
+def message_box(owner_window_obj, text, caption, box_type=MB_OKCANCEL):
+    """A nice wrapper for MessageBoxW(). Displays a modal dialog box with a
+    system icon, set of buttons, and message. Returns an integer that
+    indicates which button the user clicked.
+
+    Syntax:
+    int MessageBoxW(
+      HWND    hWnd,
+      LPCWSTR lpText,
+      LPCWSTR lpCaption,
+      UINT    uType
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-messageboxw
+    """
+    result = ctypes.windll.user32.MessageBoxW(owner_window_obj.hWnd,
+                                             text,
+                                             caption,
+                                             box_type)
+    if result == 0:
+        _raiseWithLastError()
+    else:
+        return {IDABORT: 'abort',
+                IDCANCEL: 'cancel',
+                IDCONTINUE: 'continue',
+                IDIGNORE: 'ignore',
+                IDNO: 'no',
+                IDOK: 'ok',
+                IDRETRY: 'retry',
+                IDTRYAGAIN: 'try again',
+                IDYES: 'yes'}[result]
+
+
+def move_window(window_obj, x, y, width, height, repaint=True):
+    """A nice wrapper for MoveWindow(). The dimensions of the window specified
+    by `window_obj` are moved and resized so that the topleft corner is at
+    `x` and `y`, with a size given by `width` and `height`.
+
+    Syntax:
+    BOOL MoveWindow(
+      HWND hWnd,
+      int  X,
+      int  Y,
+      int  nWidth,
+      int  nHeight,
+      BOOL bRepaint
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-movewindow
+    """
+    result = ctypes.windll.user32.MoveWindow(window_obj.hWnd, x, y, width, height, repaint)
+    if result == 0:
+        _raiseWithLastError()
+    else:
+        return True
+
+
+def open_icon(window_obj):
+    """A nice wrapper for OpenIcon(). This function restores a minimized, that
+    is, iconic, window to its previous size and position. Then it activates,
+    that is, focuses, the window.
+
+    Syntax:
+    BOOL OpenIcon(
+      HWND hWnd
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-openicon
+    """
+    result = ctypes.windll.user32.OpenIcon(window_obj.hWnd)
+    if result == 0:
+        _raiseWithLastError()
+    else:
+        return True
+
+
+def physical_to_logical_point(window_obj, physical_x, physical_y):
+    """A nice wrapper for PhysicalToLogicalPoint(). Returns the logical point
+    of `physical_x` and `physical_y` in the `window_obj`.
+
+    TODO - this doesn't work for now, it always returns (0, 0)
+
+    Syntax:
+    BOOL PhysicalToLogicalPoint(
+      HWND    hWnd,
+      LPPOINT lpPoint
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-physicaltologicalpoint
+    """
+    logicalPoint = POINT()
+    ctypes.windll.user32.PhysicalToLogicalPoint(window_obj.hWnd,
+                                                ctypes.byref(logicalPoint))
+    return (logicalPoint.x, logicalPoint.y)
+
 
 
 def peek_message():
@@ -510,7 +928,7 @@ def peek_message():
     ctypes.windll.user32.PeekMessage()
 
 
-def set_foreground_window(windowObj):
+def set_foreground_window(window_obj):
     """A nice wrapper for SetForegroundWindow(). TODO
 
     Syntax:
@@ -521,12 +939,12 @@ def set_foreground_window(windowObj):
     Microsoft Documentation:
     https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-setforegroundwindow
     """
-    result = ctypes.windll.user32.SetForegroundWindow(windowObj.hWnd)
+    result = ctypes.windll.user32.SetForegroundWindow(window_obj.hWnd)
     if result == 0: # There is no GetLastError() for this function.
         raise NiceWinException('Unable to set this window as the foreground window. For possible causes, see https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-setforegroundwindow#remarks')
 
 
-def set_window_text(windowObj, text):
+def set_window_text(window_obj, text):
     """A nice wrapper for SetWindowTextW(). TODO
 
     Syntax:
@@ -538,12 +956,12 @@ def set_window_text(windowObj, text):
     Microsoft Documentation:
     https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-setwindowtextw
     """
-    result = ctypes.windll.user32.SetWindowTextW(windowObj.hWnd, text)
+    result = ctypes.windll.user32.SetWindowTextW(window_obj.hWnd, text)
     if result == 0:
         _raiseWithLastError()
 
 
-def show_window(windowObj, action):
+def show_window(window_obj, action):
     """"A nice wrapper for ShowWindow(). TODO
 
     The `action` arg is one of the following:
@@ -562,7 +980,7 @@ def show_window(windowObj, action):
     https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-showwindow
     """
 
-    result = ctypes.windll.user32.ShowWindow(windowObj.hWnd, action)
+    result = ctypes.windll.user32.ShowWindow(window_obj.hWnd, action)
 
     if result == 0:
         return 'window was previously hidden'
@@ -570,7 +988,7 @@ def show_window(windowObj, action):
         return 'window was previously visible'
 
 
-def show_window_async(windowObj, action):
+def show_window_async(window_obj, action):
     """A nice wrapper for ShowWindowAsync(). TODO - doesn't wait for action to complete before returning.
 
     The `action` arg is one of the following:
@@ -588,7 +1006,7 @@ def show_window_async(windowObj, action):
     Microsoft Documentation:
     https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-showwindowasync
     """
-    result = ctypes.windll.user32.ShowWindowAsync(windowObj.hWnd, action)
+    result = ctypes.windll.user32.ShowWindowAsync(window_obj.hWnd, action)
     return result != 0 # Note that this function doesn't use GetLastError().
 
 
@@ -623,6 +1041,8 @@ def window_from_physical_point(x, y):
     http://msdn.microsoft.com/en-us/library/windows/desktop/dd162805(v=vs.85).aspx
     """
     cursor = POINT()
+    cursor.x = x
+    cursor.y = y
     hWnd = ctypes.windll.user32.WindowFromPhysicalPoint(ctypes.byref(cursor))
     if hWnd == 0:
         return None
@@ -659,5 +1079,3 @@ def window_from_point(x, y):
 #def sound_sentry():
 #    ctypes.windll.user32.SoundSentry()
 
-w = get_foreground_window()
-print(get_window_rect(w))
