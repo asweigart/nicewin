@@ -69,9 +69,17 @@ following:
 import ctypes
 from ctypes import wintypes # We can't use ctypes.wintypes, we must import wintypes this way.
 
-from constants import NULL, SW_FORCEMINIMIZE, SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_IGNORE_INSERTS,  AW_ACTIVATE, AW_HIDE, LSFW_LOCK, LSFW_UNLOCK, MB_OKCANCEL, IDABORT, IDCANCEL, IDCONTINUE, IDIGNORE, IDNO, IDOK, IDRETRY, IDTRYAGAIN, IDYES
+from constants import NULL, SW_FORCEMINIMIZE, SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_IGNORE_INSERTS,  AW_ACTIVATE, AW_HIDE, LSFW_LOCK, LSFW_UNLOCK, MB_OKCANCEL, IDABORT, IDCANCEL, IDCONTINUE, IDIGNORE, IDNO, IDOK, IDRETRY, IDTRYAGAIN, IDYES, HWND_TOP
+
+
 from structs import POINT, RECT, WINDOWPLACEMENT
 
+import collections
+
+
+# NOTE: `Rect` is a named tuple for use in Python, while structs.RECT represents
+# the win32 RECT struct.
+Rect = collections.namedtuple('Rect', 'left top right bottom')
 
 class NiceWinException(Exception):
     """This class exists for any exceptions raised by the nicewin module. If
@@ -104,6 +112,17 @@ class Window:
         self.hWnd = hWnd
 
 
+    def __str__(self):
+        r = get_window_text(self)
+        width = r.right - r.left
+        height = r.bottom - r.top
+        return '<%s left="%s", top="%s", width="%s", height="%s", title="%s">' % (self.__class__.__name__, r.left, r.top, width, height, self.title)
+
+
+    def __repr__(self):
+        return '%s(hWnd=%s)' % (self.__class__.__name__, self.hWnd)
+
+
     def __eq__(self, other):
         return isinstance(other, Window) and other.hWnd == self.hWnd
 
@@ -116,6 +135,58 @@ class Window:
     @title.setter
     def title(self, value):
         set_window_text(self, str(value))
+
+
+    @property
+    def width(self):
+        r = get_window_rect(self)
+        return r.right - r.left
+
+    @property
+    def height(self):
+        r = get_window_rect(self)
+        return r.bottom - r.top
+
+    @property
+    def size(self):
+        r = get_window_rect(self)
+        return (r.right - r.left, r.bottom - r.top)
+
+    @property
+    def topleft(self):
+        r = get_window_rect(self)
+        return (r.left, r.top)
+
+    @property
+    def topright(self):
+        r = get_window_rect(self)
+        return (r.right, r.top)
+
+    @property
+    def bottomleft(self):
+        r = get_window_rect(self)
+        return (r.left, r.bottom)
+
+    @property
+    def bottomright(self):
+        r = get_window_rect(self)
+        return (r.right, r.bottom)
+
+    @property
+    def top(self):
+        return get_window_rect(self).top
+
+    @property
+    def bottom(self):
+        return get_window_rect(self).bottom
+
+    @property
+    def left(self):
+        return get_window_rect(self).left
+
+    @property
+    def right(self):
+        return get_window_rect(self).right
 
 
     @property
@@ -261,6 +332,12 @@ def bring_window_to_top(window_obj):
     """A nice wrapper for BringWindowToTop(). Brings the window to the top of
     the z-order, on top of all other windows.
 
+    Additional info:
+    https://stackoverflow.com/questions/1544179/what-are-the-differences-between-bringwindowtotop-setforegroundwindow-setwindo
+
+    TODO NOTE: This doesn't actually seem to work. You might want to try
+    set_foreground_window() instead. I'm not sure what the difference is.
+
     Syntax:
     BOOL BringWindowToTop(
       HWND hWnd
@@ -319,6 +396,12 @@ def close_window(window_obj):
     and minimizes it, if it is not already minimized. This function is poorly
     named: it doesn't "destroy" the window.
 
+    According to https://stackoverflow.com/a/4904953/1893164, CloseWindow()
+    is just an older function like IsIconic() and IsZoomed(). It is extended
+    by ShowWindow().
+
+
+
     Syntax:
     BOOL CloseWindow(HWND hWnd);
 
@@ -335,6 +418,10 @@ def close_window(window_obj):
 
 def destroy_window(window_obj):
     """A nice wrapper for DestroyWindow().
+
+    This can only close a window created by the same thread running this code.
+    If you want to close a different window, call PostMessageA() and pass the
+    WM_CLOSE message.
 
     Syntax:
     BOOL DestroyWindow(HWND hWnd);
@@ -504,6 +591,23 @@ def get_desktop_window():
     return ctypes.windll.user32.GetDesktopWindow()
 
 
+def get_drives():
+    """A nice wrapper for _getdrives(). TODO
+
+    Syntax:
+    unsigned long _getdrives( void );
+
+    Microsoft Documentation:
+    https://msdn.microsoft.com/en-us/library/xdhk0xd2.aspx
+    """
+    available_drives = []
+    available_drive_flags = ctypes.cdll.msvcrt._getdrives()
+    for flag in range(26):
+        if available_drive_flags & (1 << flag):
+            available_drives.append('ABCDEFGHIJKLMNOPQRSTUVWXYZ'[flag])
+    return available_drives
+
+
 def get_foreground_window():
     """A nice wrapper for GetForegroundWindow().
 
@@ -541,6 +645,21 @@ def get_last_error():
     return ctypes.windll.kernel32.GetLastError()
 
 
+def get_user_name():
+    """TODO
+    """
+    # Copied from https://sjohannes.wordpress.com/2010/06/19/win32-python-getting-users-display-name-using-ctypes/
+    GetUserNameEx = ctypes.windll.secur32.GetUserNameExW
+    NameDisplay = 3
+
+    size = ctypes.pointer(ctypes.c_ulong(0))
+    GetUserNameEx(NameDisplay, None, size)
+
+    nameBuffer = ctypes.create_unicode_buffer(size.contents.value)
+    GetUserNameEx(NameDisplay, nameBuffer, size)
+    return nameBuffer.value
+
+
 def get_window(window_obj, relationship):
     """A nice wrapper for GetWindow(). TODO
 
@@ -562,6 +681,8 @@ def get_window(window_obj, relationship):
 
 def get_window_placement(window_obj):
     """A nice wrapper for GetWindowPlacement(). TODO
+
+    "Retrieves the show state and the restored, minimized, and maximized positions of the specified window."
 
     Syntax:
     BOOL GetWindowPlacement(
@@ -598,7 +719,7 @@ def get_window_rect(window_obj):
     rect = RECT()
     result = ctypes.windll.user32.GetWindowRect(window_obj.hWnd, ctypes.byref(rect))
     if result != 0:
-        return (rect.left, rect.top, rect.right, rect.bottom)
+        return Rect(rect.left, rect.top, rect.right, rect.bottom)
     else:
         _raiseWithLastError()
 
@@ -687,6 +808,10 @@ def is_iconic(window_obj):
     """A nice wrapper for IsIconic(). Returns `True` if `window_obj` is
     "iconic", that is, minimized.
 
+    According to https://stackoverflow.com/a/4904953/1893164, IsIconic()
+    is just an older function like CloseWindow() and IsZoomed(). It is extended
+    by ShowWindow().
+
     Syntax:
     BOOL IsIconic(
       HWND hWnd
@@ -768,6 +893,10 @@ def is_window_visible(window_obj):
 def is_zoomed(window_obj):
     """A nice wrapper for IsZoomed(). Returns `True` if the specified window
     is "zoomed", that is, maximized.
+
+    According to https://stackoverflow.com/a/4904953/1893164, IsZoomed()
+    is just an older function like IsIconic() and CloseWindow(). It is extended
+    by ShowWindow().
 
     Syntax:
     BOOL IsZoomed(
@@ -942,6 +1071,32 @@ def set_foreground_window(window_obj):
     result = ctypes.windll.user32.SetForegroundWindow(window_obj.hWnd)
     if result == 0: # There is no GetLastError() for this function.
         raise NiceWinException('Unable to set this window as the foreground window. For possible causes, see https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-setforegroundwindow#remarks')
+
+
+def set_window_pos(window_obj, left, top, width, height, z=HWND_TOP, flags=0):
+    """A nice wrapper for SetWindowPos(). While SetWindowPos() is similar to
+    MoveWindow(), you can consider it to be a sort of "MoveWindowEx()".
+
+    "Changes the size, position, and Z order of a child, pop-up, or top-level window. These windows are ordered according to their appearance on the screen. The topmost window receives the highest rank and is the first window in the Z order."
+    Syntax:
+    BOOL SetWindowPos(
+      HWND hWnd,
+      HWND hWndInsertAfter,
+      int  X,
+      int  Y,
+      int  cx,
+      int  cy,
+      UINT uFlags
+    );
+
+    Microsot Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-setwindowpos
+
+    https://blogs.msdn.microsoft.com/oldnewthing/20090323-00/?p=18733/
+    """
+    result = ctypes.windll.user32.SetWindowPos(window_obj.hWnd, z, left, top, width, height, flags)
+    if result == 0:
+        _raiseWithLastError()
 
 
 def set_window_text(window_obj, text):

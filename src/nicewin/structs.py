@@ -19,8 +19,8 @@ class POINT(ctypes.Structure):
     Microsoft Documentation:
     http://msdn.microsoft.com/en-us/library/windows/desktop/dd162805(v=vs.85).aspx
     """
-    _fields_ = [('x', ctypes.c_ulong),
-                ('y', ctypes.c_ulong)]
+    _fields_ = [('x', ctypes.c_long),
+                ('y', ctypes.c_long)]
 
 class RECT(ctypes.Structure):
     """A nice wrapper of the RECT structure.
@@ -36,10 +36,10 @@ class RECT(ctypes.Structure):
     Microsoft Documentation:
     https://msdn.microsoft.com/en-us/library/windows/desktop/dd162897(v=vs.85).aspx
     """
-    _fields_ = [('left', ctypes.c_ulong),
-                ('top', ctypes.c_ulong),
-                ('right', ctypes.c_ulong),
-                ('bottom', ctypes.c_ulong)]
+    _fields_ = [('left', ctypes.c_long),
+                ('top', ctypes.c_long),
+                ('right', ctypes.c_long),
+                ('bottom', ctypes.c_long)]
 
 
 class WINDOWPLACEMENT(ctypes.Structure):
