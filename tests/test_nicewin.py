@@ -3,7 +3,7 @@ import pytest
 import nicewin
 
 def test_basic():
-    pass # TODO - add unit tests
+    nicewin.get_active_window()
 
 
 if __name__ == '__main__':
