@@ -67,3 +67,43 @@ class WINDOWPLACEMENT(ctypes.Structure):
                 ('rcNormalPosition', RECT),
                 ('rcDevice', RECT)]
 
+
+class WCRANGE(ctypes.Structure):
+  """A nice wrapper of the WCRANGE structure.
+
+  Syntax:
+  typedef struct tagWCRANGE {
+    WCHAR  wcLow;
+    USHORT cGlyphs;
+  } WCRANGE, *PWCRANGE, *LPWCRANGE;
+
+  WCHAR docs:
+  https://docs.microsoft.com/en-us/windows/desktop/extensible-storage-engine/wchar
+
+  Microsoft Documentation:
+  https://docs.microsoft.com/en-us/windows/desktop/api/wingdi/ns-wingdi-tagwcrange
+  """
+  _fields_ = [('wcLow', ctypes.c_ushort), # TODO - WCHAR has different definitions depending on the system. Is it okay to just use ushort for it?
+              ('cGlyphs', ctypes.c_ushort),]
+
+
+class GLYPHSET(ctypes.Structure):
+  """A nice wrapper of the GLYPHSET structure.
+
+  Syntax:
+  typedef struct tagGLYPHSET {
+    DWORD   cbThis;
+    DWORD   flAccel;
+    DWORD   cGlyphsSupported;
+    DWORD   cRanges;
+    WCRANGE ranges[1];
+  } GLYPHSET, *PGLYPHSET, *LPGLYPHSET;
+
+  Microsoft Documentation:
+  https://docs.microsoft.com/en-us/windows/desktop/api/wingdi/ns-wingdi-tagglyphset
+  """
+  _fields_ = [('cbThis', ctypes.c_long),
+              ('flAccel', ctypes.c_long),
+              ('cGlyphsSupproted', ctypes.c_long),
+              ('cRanges', ctypes.c_long),
+              ('ranges', WCRANGE)] # TODO - not sure how to handle ranges[1] param. Is this a pointer?
