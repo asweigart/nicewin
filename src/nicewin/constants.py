@@ -134,5 +134,8 @@ SWP_NOSIZE = 0x0001
 SWP_NOZORDER = 0x0004
 SWP_SHOWWINDOW = 0x0040
 
-
+# Values copied from winuser.h, since they seem to absent from the MS docs.
+MONITOR_DEFAULTTONEAREST = 2 # Returns a handle to the display monitor that is nearest to the point.
+MONITOR_DEFAULTTONULL = 0 # Returns NULL.
+MONITOR_DEFAULTTOPRIMARY = 1 # Returns a handle to the primary display monitor.
 

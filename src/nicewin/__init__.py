@@ -66,10 +66,12 @@ following:
   message_box() calls MessageBoxW(), not MessageBoxA() or MessageBox().
 """
 
+__version__ = '0.0.1'
+
 import ctypes
 from ctypes import wintypes # We can't use ctypes.wintypes, we must import wintypes this way.
 
-from .constants import NULL, SW_FORCEMINIMIZE, SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_IGNORE_INSERTS,  AW_ACTIVATE, AW_HIDE, LSFW_LOCK, LSFW_UNLOCK, MB_OKCANCEL, IDABORT, IDCANCEL, IDCONTINUE, IDIGNORE, IDNO, IDOK, IDRETRY, IDTRYAGAIN, IDYES, HWND_TOP
+from .constants import NULL, SW_FORCEMINIMIZE, SW_HIDE, SW_RESTORE, SW_SHOW, SW_SHOWMAXIMIZED, SW_SHOWMINIMIZED, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_IGNORE_INSERTS,  AW_ACTIVATE, AW_HIDE, LSFW_LOCK, LSFW_UNLOCK, MB_OKCANCEL, IDABORT, IDCANCEL, IDCONTINUE, IDIGNORE, IDNO, IDOK, IDRETRY, IDTRYAGAIN, IDYES, HWND_TOP, MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTOPRIMARY
 
 
 from .structs import POINT, RECT, WINDOWPLACEMENT
@@ -509,7 +511,7 @@ def get_active_window():
     if hWnd == 0:
         return None # Note that this function doesn't use GetLastError().
     else:
-        return hWnd
+        return Window(hWnd)
 
 
 def get_client_rect(window_obj):
@@ -588,7 +590,7 @@ def get_desktop_window():
     Microsoft Documentation:
     https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-getdesktopwindow
     """
-    return ctypes.windll.user32.GetDesktopWindow()
+    return Window(ctypes.windll.user32.GetDesktopWindow())
 
 
 def get_drives():
@@ -1228,6 +1230,117 @@ def window_from_point(x, y):
         return None
     else:
         return Window(hWnd)
+
+
+def get_scale_factor_for_device():
+    """A nice wrapper for GetScaleFactorForDevice. TODO
+
+    Syntax:
+    DEVICE_SCALE_FACTOR GetScaleFactorForDevice(
+      DISPLAY_DEVICE_TYPE deviceType
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/shellscalingapi/nf-shellscalingapi-getscalefactorfordevice
+
+    Documentation on the DEVICE_SCALE_FACTOR enum:
+    https://docs.microsoft.com/en-us/windows/desktop/api/shtypes/ne-shtypes-device_scale_factor
+
+    Documentation on the DISPLAY_DEVICE_TYPE enum:
+    https://docs.microsoft.com/en-us/windows/desktop/api/shellscalingapi/ne-shellscalingapi-display_device_type
+    """
+
+    # TODO - returns int 150 for 150% scaled monitor. Arg 0 is "primary device" and 1 is "immersive device".
+    return ctypes.windll.shcore.GetScaleFactorForDevice(0)
+
+
+def monitor_from_point(x, y, dwFlags=MONITOR_DEFAULTTONEAREST):
+    """A nice wrapper for MonitorFromPoint. TODO
+
+    Returns a handle for a monitor. TODO
+
+    Syntax:
+    HMONITOR MonitorFromPoint(
+      POINT pt,
+      DWORD dwFlags
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-monitorfrompoint
+
+    Documentation on POINT structure:
+    https://docs.microsoft.com/previous-versions//dd162805(v=vs.85)
+
+    The dwFlags parameter is one of the following:
+      MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTOPRIMARY
+    """
+    p = POINT()
+    p.x = x
+    p.y = y
+    return ctypes.windll.user32.MonitorFromPoint(p, dwFlags)
+
+
+def monitor_from_rect(left, top, right, bottom, dwFlags=MONITOR_DEFAULTTONEAREST):
+    """A nice wrapper for MonitorFromRect. TODO
+
+    Syntax:
+    HMONITOR MonitorFromRect(
+      LPCRECT lprc,
+      DWORD   dwFlags
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/winuser/nf-winuser-monitorfromrect
+
+    Documentation on RECT structure:
+    https://docs.microsoft.com/en-us/windows/desktop/api/windef/ns-windef-rect
+
+    The dwFlags parameter is one of the following:
+      MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTOPRIMARY
+    """
+    rect = RECT()
+    rect.left = left
+    rect.top = top
+    rect.right = right
+    rect.bottom = bottom
+    return ctypes.windll.user32.MonitorFromRect(ctypes.byref(rect), dwFlags)
+
+def monitor_from_window(hWnd, dwFlags=MONITOR_DEFAULTTONEAREST):
+    """A nice wrapper for MonitorFromWindow. TODO
+
+    Syntax:
+    HMONITOR MonitorFromWindow(
+      HWND  hwnd,
+      DWORD dwFlags
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/Winuser/nf-winuser-monitorfromwindow
+
+    The dwFlags parameter is one of the following:
+      MONITOR_DEFAULTTONEAREST, MONITOR_DEFAULTTONULL, MONITOR_DEFAULTTOPRIMARY
+    """
+    if isinstance(hWnd, Window):
+        # If hWnd is actually a Window object, use it's hWnd attribute.
+        hWnd = hWnd.hWnd
+
+    return ctypes.windll.user32.MonitorFromWindow(hWnd, dwFlags)
+
+
+def get_monitor_from_window(hMonitor):
+    """A nice wrapper for GetMonitorFromWindowA. TODO
+
+    Syntax:
+    BOOL GetMonitorInfoA(
+      HMONITOR      hMonitor,
+      LPMONITORINFO lpmi
+    );
+
+    Microsoft Documentation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/Winuser/nf-winuser-getmonitorinfoa
+
+    Documentation on the TODO
+    """
 
 
 # TODO - need to test this
