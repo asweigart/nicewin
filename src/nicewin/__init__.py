@@ -649,6 +649,8 @@ def get_last_error():
 
 def get_user_name():
     """TODO
+
+    TODO - This currently doesn't work and returns a blank string.
     """
     # Copied from https://sjohannes.wordpress.com/2010/06/19/win32-python-getting-users-display-name-using-ctypes/
     GetUserNameEx = ctypes.windll.secur32.GetUserNameExW
@@ -1347,3 +1349,20 @@ def get_monitor_from_window(hMonitor):
 #def sound_sentry():
 #    ctypes.windll.user32.SoundSentry()
 
+
+def get_dpi_for_monitor(hMonitor):
+    """A nice wrappr for GetDpiForMonitor. TODP
+
+    Syntax:
+    HRESULT GetDpiForMonitor(
+      HMONITOR         hmonitor,
+      MONITOR_DPI_TYPE dpiType,
+      UINT             *dpiX,
+      UINT             *dpiY
+    );
+
+    Microsoft Documnetation:
+    https://docs.microsoft.com/en-us/windows/desktop/api/shellscalingapi/nf-shellscalingapi-getdpiformonitor
+
+    """
+    #ctypes.windll.shcore.GetDpiForMonitor()
